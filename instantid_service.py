@@ -48,7 +48,7 @@ class InstantIDService:
         controlnet_path = os.path.join(checkpoints_dir, "ControlNetModel")
         self.controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=dtype)
         
-        # Load pipeline using YamerMIX v8
+        # Load pipeline using YamerMIX v8 (following the pattern from your example)
         from diffusers import StableDiffusionXLPipeline
         from pipeline_stable_diffusion_xl_instantid import StableDiffusionXLInstantIDPipeline
         
@@ -65,7 +65,7 @@ class InstantIDService:
             # For now, we'll assume we're loading from HuggingFace Hub
             raise NotImplementedError("Local checkpoint loading not implemented yet")
         else:
-            # Load from HuggingFace Hub
+            # Load from HuggingFace Hub using the exact pattern from your example
             self.pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
                 base_model,
                 controlnet=self.controlnet,
@@ -85,12 +85,29 @@ class InstantIDService:
         self.ip_adapter_loaded = False
         
         try:
-            self.pipe.load_ip_adapter_instantid(face_adapter_path)
-            self.ip_adapter_loaded = True
-            print("InstantID IP adapter loaded successfully")
+            # Try different methods to load the IP adapter
+            if os.path.exists(face_adapter_path):
+                # Method 1: Try the InstantID specific loading method
+                try:
+                    self.pipe.load_ip_adapter_instantid(face_adapter_path)
+                    self.ip_adapter_loaded = True
+                    print("InstantID IP adapter loaded successfully with load_ip_adapter_instantid")
+                except Exception as e1:
+                    print(f"load_ip_adapter_instantid failed: {e1}")
+                    # Method 2: Try standard IP adapter loading
+                    try:
+                        # Some versions use standard IP adapter loading
+                        self.pipe.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
+                        self.ip_adapter_loaded = True
+                        print("IP adapter loaded successfully with standard method")
+                    except Exception as e2:
+                        print(f"Standard IP adapter loading also failed: {e2}")
+                        self.ip_adapter_loaded = False
+            else:
+                print(f"IP adapter file not found at {face_adapter_path}")
+                self.ip_adapter_loaded = False
         except Exception as e:
             print(f"Note: Could not load IP adapter: {e}")
-            print("InstantID will use ControlNet + face embeddings (this is normal and fully functional)")
             self.ip_adapter_loaded = False
             
         # Load and disable LCM LoRA weights (as shown in YamerMIX example)
@@ -240,19 +257,23 @@ class InstantIDService:
         face_emb = face_info['embedding']
         face_kps = draw_kps(face_image, face_info['kps'])
         
-        # Convert face embedding to proper tensor format for IP adapter
-        # InsightFace returns 1D embedding, but IP adapter expects 3D/4D tensors
+        # Convert face embedding to proper tensor format
+        # InsightFace returns 1D embedding [512], InstantID expects [1, 512]
         face_emb_tensor = torch.tensor(face_emb, dtype=self.dtype, device=self.device)
-        # Reshape to 4D: [1, embedding_dim, 1, 1]
-        face_emb_tensor = face_emb_tensor.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)  # Shape: [1, 512, 1, 1]
+        if face_emb_tensor.dim() == 1:
+            face_emb_tensor = face_emb_tensor.unsqueeze(0)  # Shape: [1, 512]
+        
+        # For IP adapter (if loaded), create combined embeddings
+        # Reshape to 4D: [1, embedding_dim, 1, 1] for IP adapter
+        ip_face_emb_tensor = face_emb_tensor.unsqueeze(-1).unsqueeze(-1)  # Shape: [1, 512, 1, 1]
         
         # Create negative embedding (zeros) for IP adapter
         # The IP adapter expects concatenated [negative, positive] embeddings
-        negative_emb_tensor = torch.zeros_like(face_emb_tensor)
+        negative_emb_tensor = torch.zeros_like(ip_face_emb_tensor)
         
         # Concatenate negative and positive embeddings along batch dimension
         # Shape: [2, 512, 1, 1] where first is negative, second is positive
-        combined_emb_tensor = torch.cat([negative_emb_tensor, face_emb_tensor], dim=0)
+        combined_emb_tensor = torch.cat([negative_emb_tensor, ip_face_emb_tensor], dim=0)
         
         # Set random seed if provided
         generator = None
@@ -272,14 +293,19 @@ class InstantIDService:
             "generator": generator,
         }
         
+        # For InstantID, face identity is preserved through IP adapter
         # Add IP adapter parameters only if IP adapter is loaded
         if self.ip_adapter_loaded and hasattr(self.pipe, 'set_ip_adapter_scale'):
             self.pipe.set_ip_adapter_scale(ip_adapter_scale)
             generation_kwargs["ip_adapter_image_embeds"] = [combined_emb_tensor]
+            print("Generating with InstantID + IP adapter for face identity")
         else:
-            # For InstantID without IP adapter, we can encode face information differently
-            # This is still functional as InstantID uses ControlNet for pose/structure
-            print("Generating with ControlNet-based InstantID (no IP adapter)")
+            # If IP adapter failed to load, we need to inject face embeddings differently
+            # This is a fallback that may not work as well but provides some face guidance
+            print("WARNING: IP adapter not loaded. Face identity preservation may be limited.")
+            print("Generating with ControlNet-only InstantID (pose/structure only)")
+            # Pass face embeddings as image_embeds (may help with some pipelines)
+            generation_kwargs["image_embeds"] = face_emb_tensor
         
         # Generate image using InstantID with face embeddings and keypoints
         result = self.pipe(**generation_kwargs)

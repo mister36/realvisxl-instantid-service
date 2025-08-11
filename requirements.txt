@@ -11,3 +11,5 @@ onnxruntime
 insightface
 controlnet-aux
 huggingface_hub
+peft
+xformers
