@@ -14,14 +14,8 @@ def _load():
     # Load InstantID service
     instantid_base = os.getenv("INSTANTID_BASE_MODEL", "SG161222/RealVisXL_V5.0")
     
-    # Memory optimization settings for InstantID
-    enable_cpu_offload = os.getenv("INSTANTID_ENABLE_CPU_OFFLOAD", "true").lower() == "true"
-    enable_sequential_cpu_offload = os.getenv("INSTANTID_ENABLE_SEQUENTIAL_CPU_OFFLOAD", "false").lower() == "true"
-    
     instantid_svc = InstantIDService(
-        base_model=instantid_base,
-        enable_cpu_offload=enable_cpu_offload,
-        enable_sequential_cpu_offload=enable_sequential_cpu_offload
+        base_model=instantid_base
     )
 
 @app.post("/instantid")

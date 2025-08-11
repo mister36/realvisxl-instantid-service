@@ -20,17 +20,13 @@ class InstantIDService:
         dtype=torch.float16,
         checkpoints_dir: str = "./checkpoints",
         models_dir: str = "./models",
-        enable_cpu_offload: bool = False,  # Disable for faster inference
-        enable_sequential_cpu_offload: bool = False,  # For extreme memory savings
     ):
         self.device = device
         self.dtype = dtype
         self.checkpoints_dir = checkpoints_dir
         self.models_dir = models_dir
-        self.enable_cpu_offload = enable_cpu_offload
-        self.enable_sequential_cpu_offload = enable_sequential_cpu_offload
         
-        print(f"Loading InstantID models with CPU offload: {enable_cpu_offload}, Sequential offload: {enable_sequential_cpu_offload}")
+        print("Loading InstantID models with full GPU utilization")
         
         # Ensure directories exist
         os.makedirs(checkpoints_dir, exist_ok=True)
@@ -91,18 +87,8 @@ class InstantIDService:
             print(f"Warning: Could not load IP adapter: {e}")
             print("InstantID features may be limited")
         
-        # Apply memory optimizations
-        if enable_sequential_cpu_offload:
-            # Most aggressive memory saving - keeps only active components on GPU
-            print("Enabling sequential CPU offload for InstantID pipeline")
-            self.pipe.enable_sequential_cpu_offload()
-        elif enable_cpu_offload:
-            # Moderate memory saving - keeps some components on GPU
-            print("Enabling CPU offload for InstantID pipeline")
-            self.pipe.enable_model_cpu_offload()
-        else:
-            # Keep everything on GPU (original behavior)
-            self.pipe.to(device)
+        # Keep everything on GPU for maximum performance
+        self.pipe.to(device)
             
         # Enable VAE tiling and attention slicing for lower memory usage
         if hasattr(self.pipe, 'vae'):

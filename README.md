@@ -6,7 +6,7 @@ A standalone FastAPI service for generating consistent images using InstantID wi
 
 -   InstantID face-consistent image generation
 -   RealVisXL V5.0 base model for high-quality outputs
--   Memory optimization options (CPU offload)
+-   Optimized for full GPU utilization for maximum performance
 -   RESTful API with FastAPI
 
 ## Installation
@@ -51,16 +51,13 @@ Health check endpoint.
 ## Environment Variables
 
 -   `INSTANTID_BASE_MODEL`: Base model to use (default: "SG161222/RealVisXL_V5.0")
--   `INSTANTID_ENABLE_CPU_OFFLOAD`: Enable CPU offload for memory optimization (default: "true")
--   `INSTANTID_ENABLE_SEQUENTIAL_CPU_OFFLOAD`: Enable sequential CPU offload for maximum memory savings (default: "false")
 
-## Memory Optimization
+## Performance Optimizations
 
-The service includes several memory optimization options:
+The service includes several optimizations for efficient GPU utilization:
 
-1. **CPU Offload**: Moves inactive model components to CPU to save GPU memory
-2. **Sequential CPU Offload**: Most aggressive memory saving - only keeps active components on GPU
-3. **VAE Tiling**: Reduces memory usage during image encoding/decoding
-4. **Attention Slicing**: Reduces memory usage during attention computation
+1. **Full GPU Utilization**: All model components remain on GPU for maximum performance
+2. **VAE Tiling**: Reduces memory usage during image encoding/decoding
+3. **Attention Slicing**: Reduces memory usage during attention computation
 
-Configure these via environment variables as needed for your hardware setup.
+The service is optimized for high-performance GPU setups with sufficient VRAM.
