@@ -13,6 +13,7 @@ def _load():
     
     # Load InstantID service
     instantid_base = os.getenv("INSTANTID_BASE_MODEL", "SG161222/RealVisXL_V5.0")
+    print(f"Loading InstantID service with base model: {instantid_base}")
     
     instantid_svc = InstantIDService(
         base_model=instantid_base

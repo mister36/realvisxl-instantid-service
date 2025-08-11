@@ -46,56 +46,19 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
     Pipeline for Stable Diffusion XL with InstantID
     """
     
-    def __init__(
-        self,
-        vae,
-        text_encoder,
-        text_encoder_2,
-        tokenizer,
-        tokenizer_2,
-        unet,
-        scheduler,
-        controlnet=None,
-        safety_checker=None,
-        feature_extractor=None,
-        force_zeros_for_empty_prompt=True,
-        add_watermarker=None,
-        **kwargs
-    ):
-        # Filter out parameters that are not accepted by newer versions of diffusers
-        init_kwargs = {
-            'vae': vae,
-            'text_encoder': text_encoder,
-            'text_encoder_2': text_encoder_2,
-            'tokenizer': tokenizer,
-            'tokenizer_2': tokenizer_2,
-            'unet': unet,
-            'scheduler': scheduler,
-            'force_zeros_for_empty_prompt': force_zeros_for_empty_prompt,
-        }
+    def __init__(self, *args, **kwargs):
+        """
+        Custom init to handle all components from the base pipeline, including
+        potential `image_encoder` and other unexpected components.
+        """
+        # Pop controlnet before calling super().__init__ because it's not a standard argument
+        self.controlnet = kwargs.pop("controlnet", None)
         
-        # Only add add_watermarker if it's not None
-        if add_watermarker is not None:
-            init_kwargs['add_watermarker'] = add_watermarker
-        
-        # Add any additional kwargs
-        init_kwargs.update(kwargs)
-        
-        super().__init__(**init_kwargs)
-        
-        # Store additional components as instance attributes without registering them as pipeline components
-        # This avoids conflicts with the expected pipeline component structure
-        self.controlnet = controlnet
-        self.feature_extractor = feature_extractor
-        
-        # Store these attributes separately since newer diffusers doesn't use them in __init__
-        self.safety_checker = safety_checker
-        self.ip_adapter_scale = 1.0
-        
-        # Register the controlnet component if provided
-        if controlnet is not None:
-            self.register_modules(controlnet=controlnet)
-        
+        super().__init__(*args, **kwargs)
+
+        # Register controlnet as a module
+        self.register_modules(controlnet=self.controlnet)
+
     def load_ip_adapter_instantid(self, model_path: str):
         """Load the InstantID IP adapter"""
         import os
