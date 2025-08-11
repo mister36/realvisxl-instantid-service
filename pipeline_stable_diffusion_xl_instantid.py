@@ -1,5 +1,6 @@
 import cv2
 import torch
+import math
 import numpy as np
 from PIL import Image
 from typing import Optional, Union, List, Callable, Dict, Any
@@ -26,9 +27,9 @@ def draw_kps(image_pil, kps, color_list=[(255,0,0), (0,255,0), (0,0,255), (255,2
 
         x = kps[index][:, 0]
         y = kps[index][:, 1]
-        length = ((x[1] - x[0]) ** 2 + (y[1] - y[0]) ** 2) ** 0.5
-        angle = np.arctan2(y[1] - y[0], x[1] - x[0])
-        polygon = cv2.ellipse2Poly((int(np.mean(x)), int(np.mean(y))), (int(length / 2), stickwidth), int(np.rad2deg(angle)), 0, 360, 1)
+        length = ((x[0] - x[1]) ** 2 + (y[0] - y[1]) ** 2) ** 0.5
+        angle = math.degrees(math.atan2(y[0] - y[1], x[0] - x[1]))
+        polygon = cv2.ellipse2Poly((int(np.mean(x)), int(np.mean(y))), (int(length / 2), stickwidth), int(angle), 0, 360, 1)
         out_img = cv2.fillConvexPoly(out_img.copy(), polygon, color)
     out_img = (out_img * 0.6).astype(np.uint8)
 
@@ -44,20 +45,44 @@ def draw_kps(image_pil, kps, color_list=[(255,0,0), (0,255,0), (0,0,255), (255,2
 class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
     """
     Pipeline for Stable Diffusion XL with InstantID
+    Based on the official InstantID implementation
     """
     
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self, 
+        vae,
+        text_encoder,
+        text_encoder_2,
+        tokenizer,
+        tokenizer_2,
+        unet,
+        controlnet,
+        scheduler,
+        feature_extractor=None,
+        image_encoder=None,
+        force_zeros_for_empty_prompt=True,
+        requires_safety_checker=False,
+    ):
         """
-        Custom init to handle all components from the base pipeline, including
-        potential `image_encoder` and other unexpected components.
+        Initialize the InstantID pipeline using explicit components
         """
-        # Pop controlnet before calling super().__init__ because it's not a standard argument
-        self.controlnet = kwargs.pop("controlnet", None)
+        super().__init__(
+            vae=vae,
+            text_encoder=text_encoder,
+            text_encoder_2=text_encoder_2,
+            tokenizer=tokenizer,
+            tokenizer_2=tokenizer_2,
+            unet=unet,
+            scheduler=scheduler,
+            feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
+            force_zeros_for_empty_prompt=force_zeros_for_empty_prompt,
+            requires_safety_checker=requires_safety_checker,
+        )
         
-        super().__init__(*args, **kwargs)
-
-        # Register controlnet as a module
-        self.register_modules(controlnet=self.controlnet)
+        # Register controlnet
+        self.register_modules(controlnet=controlnet)
+        self.ip_adapter_scale = 1.0
 
     def load_ip_adapter_instantid(self, model_path: str):
         """Load the InstantID IP adapter"""
@@ -71,7 +96,6 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
         else:
             # If model_path is a directory, assume the standard filename
             self.load_ip_adapter(model_path, subfolder="", weight_name="ip-adapter.bin")
-        self.ip_adapter_path = model_path
         
     def set_ip_adapter_scale(self, scale: float):
         """Set the IP adapter scale"""
@@ -97,6 +121,7 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
+        control_mask: Optional[Union[torch.FloatTensor, Image.Image]] = None,
         image: Optional[Union[torch.FloatTensor, Image.Image]] = None,
         image_embeds: Optional[torch.FloatTensor] = None,
         **kwargs,

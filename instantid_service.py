@@ -59,10 +59,19 @@ class InstantIDService:
             use_safetensors=True
         )
         
-        # Convert to InstantID pipeline by passing all components from the base pipeline
+        # Convert to InstantID pipeline by passing explicit components
         self.pipe = StableDiffusionXLInstantIDPipeline(
-            **base_pipe.components,
+            vae=base_pipe.vae,
+            text_encoder=base_pipe.text_encoder,
+            text_encoder_2=base_pipe.text_encoder_2,
+            tokenizer=base_pipe.tokenizer,
+            tokenizer_2=base_pipe.tokenizer_2,
+            unet=base_pipe.unet,
+            scheduler=base_pipe.scheduler,
             controlnet=self.controlnet,
+            feature_extractor=getattr(base_pipe, 'feature_extractor', None),
+            image_encoder=getattr(base_pipe, 'image_encoder', None),
+            force_zeros_for_empty_prompt=getattr(base_pipe, 'force_zeros_for_empty_prompt', True),
         )
         
         # Clean up the base pipeline to free memory
