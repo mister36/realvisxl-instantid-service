@@ -214,8 +214,16 @@ class InstantIDService:
         # Convert face embedding to proper tensor format for IP adapter
         # InsightFace returns 1D embedding, but IP adapter expects 3D/4D tensors
         face_emb_tensor = torch.tensor(face_emb, dtype=self.dtype, device=self.device)
-        # Reshape to 3D: [embedding_dim, 1, 1] or 4D: [1, embedding_dim, 1, 1]
+        # Reshape to 4D: [1, embedding_dim, 1, 1]
         face_emb_tensor = face_emb_tensor.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)  # Shape: [1, 512, 1, 1]
+        
+        # Create negative embedding (zeros) for IP adapter
+        # The IP adapter expects concatenated [negative, positive] embeddings
+        negative_emb_tensor = torch.zeros_like(face_emb_tensor)
+        
+        # Concatenate negative and positive embeddings along batch dimension
+        # Shape: [2, 512, 1, 1] where first is negative, second is positive
+        combined_emb_tensor = torch.cat([negative_emb_tensor, face_emb_tensor], dim=0)
         
         # Set IP adapter scale
         self.pipe.set_ip_adapter_scale(ip_adapter_scale)
@@ -229,7 +237,7 @@ class InstantIDService:
         result = self.pipe(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            image_embeds=face_emb_tensor,  # Face embeddings for identity preservation (now properly formatted)
+            image_embeds=combined_emb_tensor,  # Face embeddings with negative/positive pair for IP adapter
             image=face_kps,  # Face keypoints for pose/structure control
             width=width,
             height=height,
