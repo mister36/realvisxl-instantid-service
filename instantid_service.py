@@ -78,7 +78,10 @@ class InstantIDService:
         del base_pipe
         gc.collect()
         
-        # Load IP adapter for InstantID
+        # Keep everything on GPU for maximum performance
+        self.pipe.to(device)
+        
+        # Load IP adapter for InstantID AFTER moving to device
         face_adapter_path = os.path.join(checkpoints_dir, "ip-adapter.bin")
         try:
             self.pipe.load_ip_adapter_instantid(face_adapter_path)
@@ -86,14 +89,29 @@ class InstantIDService:
         except Exception as e:
             print(f"Warning: Could not load IP adapter: {e}")
             print("InstantID features may be limited")
-        
-        # Keep everything on GPU for maximum performance
-        self.pipe.to(device)
             
-        # Enable VAE tiling and attention slicing for lower memory usage
+        # Enable VAE tiling for lower memory usage, but DO NOT use attention slicing
+        # as it's incompatible with IP adapters (causes SlicedAttnProcessor warning)
         if hasattr(self.pipe, 'vae'):
             self.pipe.vae.enable_tiling()
-        self.pipe.enable_attention_slicing(1)
+        
+        # For InstantID with face embeddings, we need to keep models on GPU for proper functionality
+        # Use memory efficient attention if available, but avoid CPU offloading
+        try:
+            # Try to use memory efficient attention backends if available
+            if hasattr(self.pipe, 'enable_xformers_memory_efficient_attention'):
+                self.pipe.enable_xformers_memory_efficient_attention()
+                print("Enabled xFormers memory efficient attention")
+            elif hasattr(self.pipe.unet, 'set_attn_processor'):
+                # Use AttnProcessor2_0 for memory efficiency while maintaining IP adapter compatibility
+                from diffusers.models.attention_processor import AttnProcessor2_0
+                self.pipe.unet.set_attn_processor(AttnProcessor2_0())
+                print("Set AttnProcessor2_0 for memory efficiency")
+        except Exception as e:
+            print(f"Could not enable memory efficient attention: {e}")
+            print("Proceeding with default attention processors")
+        
+        print("InstantID pipeline initialized successfully with IP adapter support")
         
     def clear_memory(self):
         """Clear GPU memory cache and run garbage collection"""
@@ -225,13 +243,14 @@ class InstantIDService:
         # Shape: [2, 512, 1, 1] where first is negative, second is positive
         combined_emb_tensor = torch.cat([negative_emb_tensor, face_emb_tensor], dim=0)
         
-        # Set IP adapter scale
-        self.pipe.set_ip_adapter_scale(ip_adapter_scale)
-        
         # Set random seed if provided
         generator = None
         if seed is not None:
             generator = torch.Generator(device=self.device).manual_seed(seed)
+        
+        # Set IP adapter scale using the proper diffusers method
+        if hasattr(self.pipe, 'set_ip_adapter_scale'):
+            self.pipe.set_ip_adapter_scale(ip_adapter_scale)
         
         # Generate image using InstantID with face embeddings and keypoints
         result = self.pipe(

@@ -139,14 +139,12 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
             else:
                 control_image = image
         
-        # Prepare cross attention kwargs for IP adapter
+        # Prepare cross attention kwargs (remove ip_adapter_scale as it's not supported by SlicedAttnProcessor)
         if cross_attention_kwargs is None:
             cross_attention_kwargs = {}
         
-        # Set IP adapter scale in cross attention kwargs
-        cross_attention_kwargs["ip_adapter_scale"] = self.ip_adapter_scale
-        
         # Use the parent pipeline with InstantID features
+        # IP adapter scale is now handled directly by the pipeline, not through cross_attention_kwargs
         result = super().__call__(
             prompt=prompt,
             height=height,
@@ -168,8 +166,9 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
             # ControlNet parameters
             image=control_image,
             controlnet_conditioning_scale=controlnet_conditioning_scale,
-            # IP adapter parameters
+            # IP adapter parameters - use proper scaling
             ip_adapter_image_embeds=[image_embeds] if image_embeds is not None else None,
+            ip_adapter_image=control_image if image_embeds is not None else None,
             **kwargs,
         )
         
