@@ -51,23 +51,25 @@ class InstantIDService:
         controlnet_path = os.path.join(checkpoints_dir, "ControlNetModel")
         self.controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=dtype)
         
-        # Load pipeline with RealVisXL V5.0
-        # First load the base SDXL pipeline
-        from diffusers import StableDiffusionXLPipeline
-        base_pipe = StableDiffusionXLPipeline.from_pretrained(
-            base_model, 
+        # Load pipeline with InstantID support
+        from pipeline_stable_diffusion_xl_instantid import StableDiffusionXLInstantIDPipeline
+        
+        self.pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
+            base_model,
+            controlnet=self.controlnet,
             torch_dtype=dtype,
             variant="fp16" if dtype == torch.float16 else None,
             use_safetensors=True
         )
         
-        # Use the base pipeline directly instead of our custom wrapper to avoid component conflicts
-        self.pipe = base_pipe
-        
-        # Store additional components separately for InstantID functionality
-        self.controlnet = self.controlnet
-        self.ip_adapter_scale = 1.0
-        self.ip_adapter_path = None
+        # Load IP adapter for InstantID
+        face_adapter_path = os.path.join(checkpoints_dir, "ip-adapter.bin")
+        try:
+            self.pipe.load_ip_adapter_instantid(face_adapter_path)
+            print("InstantID IP adapter loaded successfully")
+        except Exception as e:
+            print(f"Warning: Could not load IP adapter: {e}")
+            print("InstantID features may be limited")
         
         # Apply memory optimizations
         if enable_sequential_cpu_offload:
@@ -86,10 +88,6 @@ class InstantIDService:
         if hasattr(self.pipe, 'vae'):
             self.pipe.vae.enable_tiling()
         self.pipe.enable_attention_slicing(1)
-        
-        # Load IP adapter
-        face_adapter_path = os.path.join(checkpoints_dir, "ip-adapter.bin")
-        self.ip_adapter_path = face_adapter_path
         
     def clear_memory(self):
         """Clear GPU memory cache and run garbage collection"""
@@ -208,24 +206,24 @@ class InstantIDService:
         face_kps = draw_kps(face_image, face_info['kps'])
         
         # Set IP adapter scale
-        self.ip_adapter_scale = ip_adapter_scale
+        self.pipe.set_ip_adapter_scale(ip_adapter_scale)
         
         # Set random seed if provided
         generator = None
         if seed is not None:
             generator = torch.Generator(device=self.device).manual_seed(seed)
         
-        # Simplified implementation using base SDXL pipeline
-        # Note: This bypasses the component conflict issues but doesn't use InstantID features yet
-        # TODO: Implement proper InstantID integration with face embeddings and ControlNet
-        # For now, this will generate images based on text prompt only (face consistency not implemented)
+        # Generate image using InstantID with face embeddings and keypoints
         result = self.pipe(
             prompt=prompt,
             negative_prompt=negative_prompt,
+            image_embeds=face_emb,  # Face embeddings for identity preservation
+            image=face_kps,  # Face keypoints for pose/structure control
             width=width,
             height=height,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
+            controlnet_conditioning_scale=controlnet_conditioning_scale,
             generator=generator,
         )
         

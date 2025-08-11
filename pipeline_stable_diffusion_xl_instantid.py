@@ -94,8 +94,16 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
         
     def load_ip_adapter_instantid(self, model_path: str):
         """Load the InstantID IP adapter"""
-        # This would load the IP adapter weights
-        # For now, we'll store the path for later use
+        import os
+        # Load IP adapter for image prompt embeddings
+        if os.path.isfile(model_path):
+            # If model_path is a file, use the directory and filename
+            directory = os.path.dirname(model_path)
+            filename = os.path.basename(model_path)
+            self.load_ip_adapter(directory, subfolder="", weight_name=filename)
+        else:
+            # If model_path is a directory, assume the standard filename
+            self.load_ip_adapter(model_path, subfolder="", weight_name="ip-adapter.bin")
         self.ip_adapter_path = model_path
         
     def set_ip_adapter_scale(self, scale: float):
@@ -133,19 +141,22 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
         
-        # Prepare the image for ControlNet
+        # Prepare the image for ControlNet (face keypoints)
+        control_image = None
         if image is not None:
             if isinstance(image, Image.Image):
-                image = image.resize((width, height), PIL_INTERPOLATION["lanczos"])
-                image = np.array(image)
-                image = torch.from_numpy(image).float() / 255.0
-                image = image.permute(2, 0, 1).unsqueeze(0)
-            
-            # Move to device
-            image = image.to(device=self.device, dtype=self.dtype)
+                control_image = image.resize((width, height), PIL_INTERPOLATION["lanczos"])
+            else:
+                control_image = image
         
-        # For now, we'll use the standard SDXL pipeline with some modifications
-        # In a full implementation, this would integrate the InstantID features
+        # Prepare cross attention kwargs for IP adapter
+        if cross_attention_kwargs is None:
+            cross_attention_kwargs = {}
+        
+        # Set IP adapter scale in cross attention kwargs
+        cross_attention_kwargs["ip_adapter_scale"] = self.ip_adapter_scale
+        
+        # Use the parent pipeline with InstantID features
         result = super().__call__(
             prompt=prompt,
             height=height,
@@ -164,6 +175,11 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
             callback=callback,
             callback_steps=callback_steps,
             cross_attention_kwargs=cross_attention_kwargs,
+            # ControlNet parameters
+            image=control_image,
+            controlnet_conditioning_scale=controlnet_conditioning_scale,
+            # IP adapter parameters
+            ip_adapter_image_embeds=[image_embeds] if image_embeds is not None else None,
             **kwargs,
         )
         
