@@ -1,11 +1,13 @@
-# RealVisXL InstantID Service
+# YamerMIX InstantID Service
 
-A standalone FastAPI service for generating consistent images using InstantID with RealVisXL V5.0.
+A standalone FastAPI service for generating consistent images using InstantID with YamerMIX v8.
 
 ## Features
 
 -   InstantID face-consistent image generation
--   RealVisXL V5.0 base model for high-quality outputs
+-   YamerMIX v8 base model for high-quality outputs
+-   EulerDiscreteScheduler for improved generation quality
+-   LCM LoRA support for fast inference
 -   Optimized for full GPU utilization for maximum performance
 -   RESTful API with FastAPI
 
@@ -50,7 +52,7 @@ Health check endpoint.
 
 ## Environment Variables
 
--   `INSTANTID_BASE_MODEL`: Base model to use (default: "SG161222/RealVisXL_V5.0")
+-   `INSTANTID_BASE_MODEL`: Base model to use (default: "wangqixun/YamerMIX_v8")
 
 ## Performance Optimizations
 

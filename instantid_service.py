@@ -10,12 +10,13 @@ from huggingface_hub import hf_hub_download
 from insightface.app import FaceAnalysis
 from diffusers.models import ControlNetModel
 from pipeline_stable_diffusion_xl_instantid import draw_kps
+import diffusers
 
 
 class InstantIDService:
     def __init__(
         self,
-        base_model: str = "SG161222/RealVisXL_V5.0",  # Using RealVisXL V5.0 as requested
+        base_model: str = "wangqixun/YamerMIX_v8",  # Using YamerMIX v8 as requested
         device: str = "cuda",
         dtype=torch.float16,
         checkpoints_dir: str = "./checkpoints",
@@ -47,60 +48,58 @@ class InstantIDService:
         controlnet_path = os.path.join(checkpoints_dir, "ControlNetModel")
         self.controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=dtype)
         
-        # Load base pipeline first, then convert to InstantID pipeline
+        # Load pipeline using YamerMIX v8
         from diffusers import StableDiffusionXLPipeline
         from pipeline_stable_diffusion_xl_instantid import StableDiffusionXLInstantIDPipeline
         
-        # Load base pipeline
-        base_pipe = StableDiffusionXLPipeline.from_pretrained(
-            base_model,
-            torch_dtype=dtype,
-            variant="fp16" if dtype == torch.float16 else None,
-            use_safetensors=True
-        )
-        
-        # Convert to InstantID pipeline by passing explicit components
-        self.pipe = StableDiffusionXLInstantIDPipeline(
-            vae=base_pipe.vae,
-            text_encoder=base_pipe.text_encoder,
-            text_encoder_2=base_pipe.text_encoder_2,
-            tokenizer=base_pipe.tokenizer,
-            tokenizer_2=base_pipe.tokenizer_2,
-            unet=base_pipe.unet,
-            scheduler=base_pipe.scheduler,
-            controlnet=self.controlnet,
-            feature_extractor=getattr(base_pipe, 'feature_extractor', None),
-            image_encoder=getattr(base_pipe, 'image_encoder', None),
-            force_zeros_for_empty_prompt=getattr(base_pipe, 'force_zeros_for_empty_prompt', True),
-        )
-        
-        # Clean up the base pipeline to free memory
-        del base_pipe
-        gc.collect()
+        # Load the YamerMIX v8 model and create InstantID pipeline
+        if base_model.endswith(".ckpt") or base_model.endswith(".safetensors"):
+            # Handle local checkpoint files
+            scheduler_kwargs = hf_hub_download(
+                repo_id="wangqixun/YamerMIX_v8",
+                subfolder="scheduler",
+                filename="scheduler_config.json",
+            )
+            
+            # This would require model_util which might not be available
+            # For now, we'll assume we're loading from HuggingFace Hub
+            raise NotImplementedError("Local checkpoint loading not implemented yet")
+        else:
+            # Load from HuggingFace Hub
+            self.pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
+                base_model,
+                controlnet=self.controlnet,
+                torch_dtype=dtype,
+                safety_checker=None,
+                feature_extractor=None,
+            )
+            
+            # Set EulerDiscreteScheduler as used in YamerMIX examples
+            self.pipe.scheduler = diffusers.EulerDiscreteScheduler.from_config(self.pipe.scheduler.config)
         
         # Keep everything on GPU for maximum performance
         self.pipe.to(device)
         
-        # Try to load IP adapter for InstantID AFTER moving to device
-        # Note: InstantID primarily uses ControlNet + face embeddings, IP adapter is supplementary
+        # Load IP adapter for InstantID AFTER moving to device
         face_adapter_path = os.path.join(checkpoints_dir, "ip-adapter.bin")
         self.ip_adapter_loaded = False
         
         try:
-            if os.path.isfile(face_adapter_path):
-                self.pipe.load_ip_adapter_instantid(face_adapter_path)
-                self.ip_adapter_loaded = True
-                print("InstantID IP adapter loaded successfully")
-            else:
-                print(f"IP adapter not found at {face_adapter_path}")
-                print("Attempting to load from checkpoints directory directly...")
-                self.pipe.load_ip_adapter_instantid(checkpoints_dir)
-                self.ip_adapter_loaded = True
-                print("InstantID IP adapter loaded successfully from directory")
+            self.pipe.load_ip_adapter_instantid(face_adapter_path)
+            self.ip_adapter_loaded = True
+            print("InstantID IP adapter loaded successfully")
         except Exception as e:
             print(f"Note: Could not load IP adapter: {e}")
             print("InstantID will use ControlNet + face embeddings (this is normal and fully functional)")
             self.ip_adapter_loaded = False
+            
+        # Load and disable LCM LoRA weights (as shown in YamerMIX example)
+        try:
+            self.pipe.load_lora_weights("latent-consistency/lcm-lora-sdxl")
+            self.pipe.disable_lora()  # Disabled by default
+            print("LCM LoRA weights loaded and disabled")
+        except Exception as e:
+            print(f"Could not load LCM LoRA weights: {e}")
             
         # Enable VAE tiling for lower memory usage, but DO NOT use attention slicing
         # as it's incompatible with IP adapters (causes SlicedAttnProcessor warning)
@@ -123,7 +122,7 @@ class InstantIDService:
             print(f"Could not enable memory efficient attention: {e}")
             print("Proceeding with default attention processors")
         
-        print("InstantID pipeline initialized successfully with IP adapter support")
+        print("InstantID pipeline initialized successfully with YamerMIX v8")
         
     def clear_memory(self):
         """Clear GPU memory cache and run garbage collection"""

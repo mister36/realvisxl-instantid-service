@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from PIL import Image
 from instantid_service import InstantIDService
 
-app = FastAPI(title="RealVisXL InstantID Service", description="Image generation service using InstantID with RealVisXL V5.0")
+app = FastAPI(title="YamerMIX InstantID Service", description="Image generation service using InstantID with YamerMIX v8")
 instantid_svc = None
 
 @app.on_event("startup")
@@ -12,7 +12,7 @@ def _load():
     global instantid_svc
     
     # Load InstantID service
-    instantid_base = os.getenv("INSTANTID_BASE_MODEL", "SG161222/RealVisXL_V5.0")
+    instantid_base = os.getenv("INSTANTID_BASE_MODEL", "wangqixun/YamerMIX_v8")
     print(f"Loading InstantID service with base model: {instantid_base}")
     
     instantid_svc = InstantIDService(
@@ -33,7 +33,7 @@ async def instantid(
     seed: int = Form(None),
 ):
     """
-    Generate consistent images using InstantID with RealVisXL V5.0
+    Generate consistent images using InstantID with YamerMIX v8
     
     Args:
         face_image: Input image containing the face to preserve
@@ -76,7 +76,7 @@ async def instantid(
 @app.get("/health")
 async def health():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "RealVisXL InstantID"}
+    return {"status": "healthy", "service": "YamerMIX InstantID"}
 
 if __name__ == "__main__":
     import uvicorn
