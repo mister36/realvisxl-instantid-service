@@ -143,6 +143,9 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
         if cross_attention_kwargs is None:
             cross_attention_kwargs = {}
         
+        # Extract IP adapter parameters from kwargs to avoid duplication
+        ip_adapter_image_embeds = kwargs.pop('ip_adapter_image_embeds', None)
+        
         # Use the parent pipeline with InstantID features
         # IP adapter scale is now handled directly by the pipeline, not through cross_attention_kwargs
         result = super().__call__(
@@ -166,9 +169,8 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
             # ControlNet parameters
             image=control_image,
             controlnet_conditioning_scale=controlnet_conditioning_scale,
-            # IP adapter parameters - use proper scaling
-            ip_adapter_image_embeds=[image_embeds] if image_embeds is not None else None,
-            ip_adapter_image=control_image if image_embeds is not None else None,
+            # IP adapter parameters - use face embeddings for InstantID
+            ip_adapter_image_embeds=ip_adapter_image_embeds,
             **kwargs,
         )
         
