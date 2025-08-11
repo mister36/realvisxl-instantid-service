@@ -61,7 +61,6 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
         feature_extractor=None,
         image_encoder=None,
         force_zeros_for_empty_prompt=True,
-        requires_safety_checker=False,
     ):
         """
         Initialize the InstantID pipeline using explicit components
@@ -77,7 +76,6 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
             force_zeros_for_empty_prompt=force_zeros_for_empty_prompt,
-            requires_safety_checker=requires_safety_checker,
         )
         
         # Register controlnet
