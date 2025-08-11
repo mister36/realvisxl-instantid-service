@@ -22,12 +22,33 @@ class InstantIDService:
         checkpoints_dir: str = "./checkpoints",
         models_dir: str = "./models",
     ):
-        self.device = device
-        self.dtype = dtype
+        # Check CUDA compatibility
+        if device == "cuda" and torch.cuda.is_available():
+            try:
+                # Test basic CUDA operations
+                test_tensor = torch.tensor([1.0], device="cuda")
+                test_result = test_tensor * 2
+                print("CUDA compatibility test passed")
+                self.device = device
+                self.dtype = dtype
+            except RuntimeError as e:
+                if "no kernel image is available" in str(e):
+                    print("WARNING: CUDA kernel compatibility issue detected (RTX 5090 needs newer PyTorch)")
+                    print("Falling back to CPU for tensor operations")
+                    self.device = "cpu"
+                    self.dtype = torch.float32
+                else:
+                    print(f"CUDA error: {e}")
+                    self.device = device
+                    self.dtype = dtype
+        else:
+            self.device = device
+            self.dtype = dtype
+        
         self.checkpoints_dir = checkpoints_dir
         self.models_dir = models_dir
         
-        print("Loading InstantID models with full GPU utilization")
+        print(f"Loading InstantID models with device: {self.device}, dtype: {self.dtype}")
         
         # Ensure directories exist
         os.makedirs(checkpoints_dir, exist_ok=True)
@@ -257,23 +278,45 @@ class InstantIDService:
         face_emb = face_info['embedding']
         face_kps = draw_kps(face_image, face_info['kps'])
         
-        # Convert face embedding to proper tensor format
+        # Convert face embedding to proper tensor format with CUDA error handling
         # InsightFace returns 1D embedding [512], InstantID expects [1, 512]
-        face_emb_tensor = torch.tensor(face_emb, dtype=self.dtype, device=self.device)
-        if face_emb_tensor.dim() == 1:
-            face_emb_tensor = face_emb_tensor.unsqueeze(0)  # Shape: [1, 512]
-        
-        # For IP adapter (if loaded), create combined embeddings
-        # Reshape to 4D: [1, embedding_dim, 1, 1] for IP adapter
-        ip_face_emb_tensor = face_emb_tensor.unsqueeze(-1).unsqueeze(-1)  # Shape: [1, 512, 1, 1]
-        
-        # Create negative embedding (zeros) for IP adapter
-        # The IP adapter expects concatenated [negative, positive] embeddings
-        negative_emb_tensor = torch.zeros_like(ip_face_emb_tensor)
-        
-        # Concatenate negative and positive embeddings along batch dimension
-        # Shape: [2, 512, 1, 1] where first is negative, second is positive
-        combined_emb_tensor = torch.cat([negative_emb_tensor, ip_face_emb_tensor], dim=0)
+        try:
+            face_emb_tensor = torch.tensor(face_emb, dtype=self.dtype, device=self.device)
+            if face_emb_tensor.dim() == 1:
+                face_emb_tensor = face_emb_tensor.unsqueeze(0)  # Shape: [1, 512]
+            
+            # For IP adapter (if loaded), create combined embeddings
+            # Reshape to 4D: [1, embedding_dim, 1, 1] for IP adapter
+            ip_face_emb_tensor = face_emb_tensor.unsqueeze(-1).unsqueeze(-1)  # Shape: [1, 512, 1, 1]
+            
+            # Create negative embedding (zeros) for IP adapter
+            # The IP adapter expects concatenated [negative, positive] embeddings
+            negative_emb_tensor = torch.zeros_like(ip_face_emb_tensor)
+            
+            # Concatenate negative and positive embeddings along batch dimension
+            # Shape: [2, 512, 1, 1] where first is negative, second is positive
+            combined_emb_tensor = torch.cat([negative_emb_tensor, ip_face_emb_tensor], dim=0)
+            
+        except RuntimeError as e:
+            if "CUDA error" in str(e):
+                print(f"CUDA error detected, falling back to CPU for face embeddings: {e}")
+                # Fallback to CPU for tensor operations
+                face_emb_tensor = torch.tensor(face_emb, dtype=torch.float32, device="cpu")
+                if face_emb_tensor.dim() == 1:
+                    face_emb_tensor = face_emb_tensor.unsqueeze(0)
+                
+                ip_face_emb_tensor = face_emb_tensor.unsqueeze(-1).unsqueeze(-1)
+                negative_emb_tensor = torch.zeros_like(ip_face_emb_tensor)
+                combined_emb_tensor = torch.cat([negative_emb_tensor, ip_face_emb_tensor], dim=0)
+                
+                # Move to GPU if possible, otherwise keep on CPU
+                try:
+                    face_emb_tensor = face_emb_tensor.to(self.device)
+                    combined_emb_tensor = combined_emb_tensor.to(self.device)
+                except:
+                    print("Keeping face embeddings on CPU due to CUDA issues")
+            else:
+                raise e
         
         # Set random seed if provided
         generator = None

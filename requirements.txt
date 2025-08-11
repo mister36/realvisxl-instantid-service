@@ -5,7 +5,9 @@ transformers
 accelerate
 pillow
 python-multipart
-torch
+torch>=2.4.0
+torchvision
+torchaudio
 opencv-python
 onnxruntime
 insightface
