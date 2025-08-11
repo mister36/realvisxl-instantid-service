@@ -92,6 +92,10 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLPipeline):
         self.safety_checker = safety_checker
         self.ip_adapter_scale = 1.0
         
+        # Register the controlnet component if provided
+        if controlnet is not None:
+            self.register_modules(controlnet=controlnet)
+        
     def load_ip_adapter_instantid(self, model_path: str):
         """Load the InstantID IP adapter"""
         import os

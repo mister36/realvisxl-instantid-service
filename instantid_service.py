@@ -51,16 +51,36 @@ class InstantIDService:
         controlnet_path = os.path.join(checkpoints_dir, "ControlNetModel")
         self.controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=dtype)
         
-        # Load pipeline with InstantID support
+        # Load base pipeline first, then convert to InstantID pipeline
+        from diffusers import StableDiffusionXLPipeline
         from pipeline_stable_diffusion_xl_instantid import StableDiffusionXLInstantIDPipeline
         
-        self.pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
+        # Load base pipeline
+        base_pipe = StableDiffusionXLPipeline.from_pretrained(
             base_model,
-            controlnet=self.controlnet,
             torch_dtype=dtype,
             variant="fp16" if dtype == torch.float16 else None,
             use_safetensors=True
         )
+        
+        # Convert to InstantID pipeline by manually creating it with components
+        self.pipe = StableDiffusionXLInstantIDPipeline(
+            vae=base_pipe.vae,
+            text_encoder=base_pipe.text_encoder,
+            text_encoder_2=base_pipe.text_encoder_2,
+            tokenizer=base_pipe.tokenizer,
+            tokenizer_2=base_pipe.tokenizer_2,
+            unet=base_pipe.unet,
+            scheduler=base_pipe.scheduler,
+            controlnet=self.controlnet,
+            safety_checker=getattr(base_pipe, 'safety_checker', None),
+            feature_extractor=getattr(base_pipe, 'feature_extractor', None),
+            force_zeros_for_empty_prompt=getattr(base_pipe, 'config', {}).get('force_zeros_for_empty_prompt', True),
+        )
+        
+        # Clean up the base pipeline to free memory
+        del base_pipe
+        gc.collect()
         
         # Load IP adapter for InstantID
         face_adapter_path = os.path.join(checkpoints_dir, "ip-adapter.bin")
