@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+diffusers>=0.30.0
+transformers
+accelerate
+pillow
+python-multipart
+torch
+opencv-python
+onnxruntime
+insightface
+controlnet-aux
+huggingface_hub
