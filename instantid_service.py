@@ -69,10 +69,11 @@ class InstantIDService:
             unet=base_pipe.unet,
             scheduler=base_pipe.scheduler,
             controlnet=self.controlnet,
-            safety_checker=getattr(base_pipe, 'safety_checker', None),
-            feature_extractor=getattr(base_pipe, 'feature_extractor', None),
-            force_zeros_for_empty_prompt=getattr(base_pipe, 'config', {}).get('force_zeros_for_empty_prompt', True),
         )
+        
+        # Manually set components that are not part of the main constructor
+        self.pipe.safety_checker = getattr(base_pipe, 'safety_checker', None)
+        self.pipe.feature_extractor = getattr(base_pipe, 'feature_extractor', None)
         
         # Clean up the base pipeline to free memory
         del base_pipe
